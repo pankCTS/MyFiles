@@ -1,0 +1,171 @@
+DBQL Query
+=============
+
+sel 
+qrylog.logdate,acctstringhour,appID,
+qrylog.queryID(varchar(20)),qrylog.procID
+--cast(qrylog.collecttimestamp as date) logdate,
+,sessionid,qrylog.USERNAME,clientId
+    ,qrylog.starttime
+       ,((firstresptime - starttime) hour(4) to second) (Named RunTime)
+       ,((EXTRACT(HOUR FROM  FirstRespTime)*60)+
+EXTRACT(MINUTE FROM  FirstRespTime))*60+
+EXTRACT(SECOND FROM  FirstRespTime) (DECIMAL(18,2)) AS End_Time
+                   
+,((EXTRACT(HOUR FROM  StartTime)*60)+
+EXTRACT(MINUTE FROM  StartTime))*60+
+EXTRACT(SECOND FROM  StartTime)(DECIMAL(18,2)) AS Start_Time
+
+,End_Time-Start_Time elapsed_seconds,ParserCPUTime,TDWMEstTotalTime
+,wdname,finalwdname,delaytime,CacheFlag
+
+       ,qrylog.AMPCPUTime  TotalCPUTime 
+       ,MaxAmpCPUTime  HotAmp1CPU
+              ,qrylog.TotalIOcount 
+       ,MaxAmpIO  HotAmp1IO
+       ,MaxAMPCPUTime * (HASHAMP()+1)  /*no. of Amps*/ AS ImpactCPU
+       ,CASE            
+WHEN    (AMPCPUTIME / (HASHAMP()+1) ) =0 THEN 0 
+     
+      ELSE qrylog.MaxAMPCPUTime/(AMPCPUTIME / (HASHAMP()+1)  )  
+END       (DECIMAL(18,2)) AS CpuSkw
+          , 
+CASE            
+                WHEN    (TotalIOCount / (HASHAMP()+1) ) =0 THEN 0 
+                     ELSE qrylog.MaxAmpIO/(TotalIOCount / (HASHAMP()+1)  )  
+END       (DECIMAL(18,2))  AS IOSkw
+          , 
+CASE            
+                WHEN    qrylog.TotalIOCount = 0 THEN 0  
+                     ELSE (qrylog.AMPCPUTIME *1000)/qrylog.TotalIOCount   
+END       (DECIMAL(18,2)) AS PJI
+       , 
+CASE            
+                WHEN    qrylog.AMPCPUTIME = 0 THEN 0  
+                     ELSE qrylog.TotalIOCount /(qrylog.AMPCPUTIME *1000)   
+END       (DECIMAL(18,2)) AS UII
+         
+        ,numresultrows
+       ,spoolusage
+       ,errortext,errorcode,statementtype,hashrow(qrylogsql.SqlTextInfo) as SQLHASH
+   ,qrylogsql.SqlTextInfo
+   --,qrylog.querytext
+from    pdcrinfo.DBQlogtbl_DBC qrylog, ---use pdcrinfo.DBQlogtbl_dbc for todays logs
+     pdcrinfo.dbqlsqltbl_DBC qrylogsql ----use pdcrinfo.dbqlsqltbl_dbc for todays logs
+where  
+ qrylogsql.procid  = qrylog.procid  
+and   qrylogsql.queryid = qrylog.queryid
+--and   qrylog.logdate = qrylogsql.logdate --//uncomment  if you want to see todays logs from pdcrinfo.*_dbc tables
+--and qrylog.queryId in (
+
+
+and qrylog.username ='CF_SSAS_LV'
+--and SqlRowNo=1
+--and clientID like '%biradar%'
+--and totalCPUTime between 400 and 800
+--and qrylog.finalwdname like '%batch%'
+--and qrylog.cacheflag='G'
+--and qrylog.queryID=307081195355123132
+--and sessionId=43581921
+--and statementtype='update'
+--and qrylog.querytext like '%select%SUM("T_0"."Grs_Sls_Val_Amt")%'
+--and qrylog.logdate between '2017-01-02' and '2017-02-17'
+--and qrylog.acctstringhour=10
+order by ImpactCPU desc,elapsed_seconds desc;
+
+=================================================================
+SPACE Tablewise and Skew Factor
+---------------------------------
+
+sel databasename, tablename , sum(currentperm) as "currentperm", sum(currentperm)/1024/1024/1024 Size_GB  ,
+((1 - (AVG(CURRENTPERM)/MAX(CURRENTPERM)))*100) AS SKEWFACTOR
+from dbc.tablesize
+where databasename ='EDW01_D_LV_ODS_N_01'
+and tablename  = 'SDA_EXT_CSLMTARGET'
+group by databasename,tablename
+order by  3 desc;
+
+SPACE DatabaseWise and Skew Factor
+-----------------------------------
+SELECT Databasename (format 'X(15)') AS "Databasename"
+,SUM(maxperm)/(1024*1024*1024)(FORMAT 'zzzz9.99', TITLE 'Maxperm-GB')  AS "Maxperm_GB"
+,SUM(currentperm) /(1024*1024*1024)(FORMAT 'zzzz9.99', TITLE 'Currentperm-GB') AS "Currentperm_GB"
+,(SUM(maxperm) - SUM(currentperm))/(1024*1024*1024)(FORMAT 'zzzz9.99', TITLE 'Free-GB') AS "Freeperm_GB"
+,((SUM(currentperm))/ NULLIFZERO (SUM(maxperm)) * 100) (FORMAT 'zz9.99%', TITLE 'Percent // Used') AS "%Used",
+((1 - (AVG(CURRENTPERM)/MAX(CURRENTPERM)))*100) AS SKEWFACTOR
+FROM DBC.DiskSpace
+WHERE
+MAXPERM <> 0 
+and databasename in  ('EDW01_D_LV_ODS_N_01')
+--(SELECT child FROM dbc.children WHERE parent='DBC')
+GROUP BY 1
+
+SPACE DB WISE ALONG WITH SKEW DETAILS
+==========================================
+SELECT DATABASENAME,
+SUM(CURRENTPERM)/1024/1024/1024 AS UTILIZED_SPACE_ACTUAL,
+MAX(CURRENTPERM) * (HASHAMP()+1)/1024/1024/1024 AS UTILIZED_SPACE_WITH_SKEW,
+UTILIZED_SPACE_WITH_SKEW - UTILIZED_SPACE_ACTUAL AS SPACE_WASTED_DUE_TO_SKEW,
+SUM(MAXPERM)/1024/1024/1024 MAX_SPACE,
+MAX_SPACE- UTILIZED_SPACE_WITH_SKEW AS FREE_SPACE_ACTUAL,
+MAX_SPACE- UTILIZED_SPACE_ACTUAL AS FREE_SPACE,
+SUM(CURRENTPERM)/ NULLIFZERO (SUM(MAXPERM)) *100 (FORMAT 'ZZ9.99%') AS PERCENTAGE_USED 
+FROM DBC.DISKSPACE
+WHERE DATABASENAME IN 
+('SPOOL_RESERVE', 'TMP','EDW01_D_LV_ODS_N_01')
+GROUP BY DATABASENAME
+ORDER BY 2
+=====================================================================
+TO CHECK ALL USERS:
+----------------------
+sel * from dbc.tables where tablename like '%USER%'
+
+SEL * from SYS_V_ADMIN.Allusers WHERE 
+PROFILENAME = 'PR_SYS_DBA'
+AND USERNAME LIKE '%SAI%';
+
+==================================================================================
+CANARY QUERIES DEBUG
+=========================
+SEL AcctStringHour,username,WDNAME,FinalWDName,sum(ampcputime+parsercputime) as totalcpu, count(*) as QC
+from PDCRINFO.DBQLOGTBL
+Where logdate='2017-02-20' and 
+AcctStringHour in (9,10)
+group by 1,2,3,4
+order by 1,2,3,4
+==================================================================================
+DORMANT USER FINDING
+======================
+create volatile table tmplogonoff as (
+sel username, MechanismName, max(logondate)  mxlogondate from (
+sel username,MechanismName, max(logondate) logondate from  pdcrinfo.logonoff_hst t1 
+group by 1,2
+UNION
+sel username,MechanismName, max(logondate) logondate from  dbc.logonoff t1 
+group by 1,2
+) T
+group by 1,2
+) with data
+primary index(username)
+on commit preserve rows;
+
+collect stats on tmplogonoff index(username);
+collect stats on tmplogonoff column(username,MechanismName);
+
+SEL * FROM tmplogonoff
+
+sel  trim(username), profilename, ownername, lastaltertimestamp, PasswordLastModDate           
+from SYS_V_ADMIN.AllUsers
+where username in (
+SEL trim(DATABASENAME) from dbc.DBASE where ROWTYPE = 'U' and cast(lastaltertimestamp as date) <=  '2016-08-01'
+and profilename <> 'PR_DORMANT_USER'
+and profilename like 'PR_%'
+minus
+sel username from tmplogonoff group by 1
+) 
+
+========================================================================================
+LIKE ANY
+=========
+SEL * FROM PDCRINFO.DBQLOGTBL WHere 
+CLIENTID LIKE ANY  ( '%CHETHAN%', '%Manoj%', '%Pavan%', '%Thatipelli%')

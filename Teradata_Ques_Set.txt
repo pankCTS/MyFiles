@@ -1,0 +1,42 @@
+Piyush Kumar	8122878892	piyushtd2hadoop@gmail.com
+
+Communication is good
+Upgradation Activities
+Utilities available in teradata
+Checktable / Scandisk / Packdisk
+Difference of PK/PI in teradata
+Refrential Integrity
+Protection Mechanism - Fallback/Journals/RAIDs
+PJ/TJ
+
+SQLs
+partitioning - 
+Row-Case/Range
+Column-
+NoPI-
+
+Teradata Viewpoint-
+
+Processes-
++++++++++++++++++++++++++++++++++++
+Syed - 9th Oct
+5+ yrs - Good Commn
+Utilitites available in Teradata - 
+TPT - Producers and Consumers - 
+Unix - Good in Unix
+Good in Partitioning Concepts
+Refrential Integrity - 
+Protection Mechanism - Fallback/Journals/RAIDs
+Join Indexes
+
+
+1. System-level privileges
+2. Object-level privileges -  1. Database   2.Table   3. Row or column  4. Other object types
+3. Row-level privileges
+4. Zone-level privilege
+
+
++++++++++++++++++++++++++++++++++++
+
+
+
